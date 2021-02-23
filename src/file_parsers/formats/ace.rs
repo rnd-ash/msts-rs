@@ -155,7 +155,7 @@ impl AceTexture {
                 return Err(AceParseError::NotValid("Unsupported colour channel type".to_string())) 
             }
         }
-        println!("Channels: {:#?}", channels);
+        //println!("Channels: {:#?}", channels);
 
         /*
         We don't care about mipmaps, just extract the first (largest image!)
@@ -178,13 +178,13 @@ impl AceTexture {
                 AceSurfaceFormat::BGRA_5551 => todo!("BRGA 5551 todo"),
                 AceSurfaceFormat::BGRA_4444 => todo!("BRGA 4444 todo"),
                 AceSurfaceFormat::DXT_1 => {
-                    return Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT1).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT1).unwrap())?)
                 }
                 AceSurfaceFormat::DXT_3 => {
-                    return Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT3).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT3).unwrap())?)
                 }
                 AceSurfaceFormat::DXT_5 => {
-                    return Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT5).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT5).unwrap())?)
                 }
             }
         } else {
@@ -202,9 +202,9 @@ impl AceTexture {
             let img_height = height / 2i32.pow(0);
             for y in 0..img_height as usize {
                 for channel in &channels {
+                    channel_buffers[channel.id as usize] = vec![0x00; img_width as usize];
                     if channel.size == 1 {
                         let bytes = reader.read_bytes((channel.size as f64 * img_width as f64 / 8f64).ceil() as usize)?;
-                        channel_buffers[channel.id as usize] = vec![0x00; img_width as usize];
                         for x in 0..img_width as usize {
                             channel_buffers[channel.id as usize][x] = ((bytes[x/8] >> (7 - (x % 8))) & 1) * 0xFF;
                         }
@@ -213,20 +213,19 @@ impl AceTexture {
                     }
                 }
                 for x in 0..img_width as usize {
-
-                    let alpha_byte = if let Some(alpha) = channel_buffers.get(AceChannelId::Alpha as usize) {
-                        *alpha.get(x).unwrap_or(&0xFFu8)
-                    } else if let Some(mask) = channel_buffers.get(AceChannelId::Mask as usize) {
-                        *mask.get(x).unwrap_or(&0xFFu8)
+                    let alpha_byte = if let Some(alpha) = channel_buffers[AceChannelId::Alpha as usize].get(x) {
+                        alpha
+                    } else if let Some(mask) = channel_buffers[AceChannelId::Mask as usize].get(x) {
+                        mask
                     } else {
-                        0xFF
+                        &0xFF
                     };
 
                     buffer.put_pixel(x as u32, y as u32, Rgba([
                         channel_buffers[AceChannelId::Red as usize][x], 
                         channel_buffers[AceChannelId::Green as usize][x], 
                         channel_buffers[AceChannelId::Blue as usize][x], 
-                        alpha_byte
+                        *alpha_byte
                     ]));
                 }
             }
