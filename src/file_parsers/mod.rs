@@ -1,10 +1,19 @@
 use std::{fs::File, io::{Read, Seek, SeekFrom, Write}, path::Path};
 use compress::zlib;
+use image::DynamicImage;
+
+use self::formats::ace::{AceParseError, AceTexture};
 pub mod formats;
 pub mod raf;
 
 const HEADER_UNCOMPRESSED: &[u8] = b"SIMISA@@";
 const HEADER_COMRPRESSED:  &[u8] = b"SIMISA@F";
+
+pub fn load_ace(p: &str) -> std::result::Result<DynamicImage, AceParseError> {
+    let contents = load_file(p)?;
+    AceTexture::from_data(&contents)
+}
+
 
 pub fn load_file(p: &str) -> std::io::Result<Vec<u8>> {
     println!("Loading file {}", p);

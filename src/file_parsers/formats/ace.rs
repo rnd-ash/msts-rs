@@ -80,7 +80,8 @@ impl AceSurfaceFormat {
 pub enum AceParseError {
     ReadError(raf::RafError),
     NotValid(String),
-    ImageProcessError(ImageError)
+    ImageProcessError(ImageError),
+    IOError(std::io::Error)
 }
 
 impl From<raf::RafError> for AceParseError {
@@ -92,6 +93,12 @@ impl From<raf::RafError> for AceParseError {
 impl From<ImageError> for AceParseError {
     fn from(e: ImageError) -> Self {
         Self::ImageProcessError(e)
+    }
+}
+
+impl From<std::io::Error> for AceParseError {
+    fn from(e: std::io::Error) -> Self {
+        Self::IOError(e)
     }
 }
 
@@ -133,14 +140,10 @@ impl AceTexture {
         }
         reader.read_bytes(128)?; // Header data 
 
-        println!("ACE Format: {:?}", fmt);
-
         let mut img_count = 1;
         if options & AceFormatOptions::MipMaps as i32 != 0 {
             img_count += ((width as f32).log2() / 2f32.log2()) as i32;
         }
-
-        println!("Image has {} sub-image(s)", img_count);
 
         let mut channels: Vec<AceChannel> = Vec::new();
         for _ in 0..channel_count {
@@ -230,8 +233,6 @@ impl AceTexture {
                 }
             }
             Ok(DynamicImage::ImageRgba8(buffer))
-            //DynamicImage::from_decoder()
-            //buf.
         }
     }
 }

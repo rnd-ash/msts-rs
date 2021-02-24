@@ -13,3 +13,5 @@ Cargo.lock
 ROUTES/**
 SOUND/**
 TRAINS/**
+GUI/**
+GLOBAL/**
