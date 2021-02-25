@@ -27,7 +27,7 @@ pub struct AceChannel {
 }
 
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum AceChannelId {
     Mask = 2,
     Red = 3,
@@ -45,6 +45,15 @@ impl AceChannelId {
             5 => Some(Self::Blue),
             6 => Some(Self::Alpha),
             _ => None
+        }
+    }
+
+    pub (crate) fn get_pixel_idx(&self) -> usize {
+        match &self {
+            Self::Mask | Self::Alpha => 3,
+            Self::Blue => 2,
+            Self::Green => 1,
+            Self::Red => 0,
         }
     }
 }
@@ -109,8 +118,8 @@ impl AceTexture {
         reader.read_bytes(4)?; // Skip header
         let options = reader.read_i32()?;
 
-        let width = reader.read_i32()?;
-        let height = reader.read_i32()?;
+        let width = reader.read_i32()? as usize;
+        let height = reader.read_i32()? as usize;
         let surface_format = reader.read_i32()?;
         let channel_count = reader.read_i32()?;
 
@@ -169,9 +178,6 @@ impl AceTexture {
             // Raw data
             reader.read_bytes(img_count as usize * 4)?;
 
-            let img_width = width / 2i32.pow(0);
-            let img_height = height / 2i32.pow(0);
-
             let num_bytes = reader.read_i32()? as usize;
             let px_buf = reader.read_bytes(num_bytes)?;
             let contents = Cursor::new(px_buf);
@@ -181,58 +187,39 @@ impl AceTexture {
                 AceSurfaceFormat::BGRA_5551 => todo!("BRGA 5551 todo"),
                 AceSurfaceFormat::BGRA_4444 => todo!("BRGA 4444 todo"),
                 AceSurfaceFormat::DXT_1 => {
-                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT1).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, width as u32, height as u32, image::dxt::DXTVariant::DXT1).unwrap())?)
                 }
                 AceSurfaceFormat::DXT_3 => {
-                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT3).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, width as u32, height as u32, image::dxt::DXTVariant::DXT3).unwrap())?)
                 }
                 AceSurfaceFormat::DXT_5 => {
-                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, img_width as u32, img_height as u32, image::dxt::DXTVariant::DXT5).unwrap())?)
+                    Ok(DynamicImage::from_decoder(DxtDecoder::new(contents, width as u32, height as u32, image::dxt::DXTVariant::DXT5).unwrap())?)
                 }
             }
         } else {
             for idx in 0..img_count {
                 reader.read_bytes(4 * height as usize / (2usize.pow(idx as u32)))?;
             }
-            //let mut buffer: Vec<u32> = vec![0; (width*height) as usize];
 
-            let mut buffer: RgbaImage = ImageBuffer::new(width as u32, height as u32);
-
-            let mut channel_buffers : Vec<Vec<u8>> = Vec::new();
-            for _ in 0..8 { channel_buffers.push(Vec::new()) }
-
-            let img_width = width / 2i32.pow(0);
-            let img_height = height / 2i32.pow(0);
-            for y in 0..img_height as usize {
+            let mut pixels: Vec<u8> = vec![0xFF; 4 * (width * height) as usize];
+            for y in 0..height as usize {
                 for channel in &channels {
-                    channel_buffers[channel.id as usize] = vec![0x00; img_width as usize];
+                    // 1bpp
                     if channel.size == 1 {
-                        let bytes = reader.read_bytes((channel.size as f64 * img_width as f64 / 8f64).ceil() as usize)?;
-                        for x in 0..img_width as usize {
-                            channel_buffers[channel.id as usize][x] = ((bytes[x/8] >> (7 - (x % 8))) & 1) * 0xFF;
+                        let bytes = reader.read_bytes((channel.size as f64 * width as f64 / 8f64).ceil() as usize)?;
+                        for x in 0..width as usize {
+                            pixels[(4 * ((y * width) + x)) + channel.id.get_pixel_idx()] = ((bytes[x/8] >> (7 - (x % 8))) & 1) * 0xFF;
                         }
+                    // 8bpp
                     } else {
-                        channel_buffers[channel.id as usize] = reader.read_bytes(img_width as usize)?;
+                        let bytes = reader.read_bytes(width)?;
+                        for x in 0..width as usize {
+                            pixels[(4 * ((y * width) + x)) + channel.id.get_pixel_idx()] = bytes[x];
+                        }
                     }
                 }
-                for x in 0..img_width as usize {
-                    let alpha_byte = if let Some(alpha) = channel_buffers[AceChannelId::Alpha as usize].get(x) {
-                        alpha
-                    } else if let Some(mask) = channel_buffers[AceChannelId::Mask as usize].get(x) {
-                        mask
-                    } else {
-                        &0xFF
-                    };
-
-                    buffer.put_pixel(x as u32, y as u32, Rgba([
-                        channel_buffers[AceChannelId::Red as usize][x], 
-                        channel_buffers[AceChannelId::Green as usize][x], 
-                        channel_buffers[AceChannelId::Blue as usize][x], 
-                        *alpha_byte
-                    ]));
-                }
             }
-            Ok(DynamicImage::ImageRgba8(buffer))
+            Ok(DynamicImage::ImageRgba8(ImageBuffer::from_raw(width as u32, height as u32, pixels).unwrap()))
         }
     }
 }
